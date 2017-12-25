@@ -35,9 +35,9 @@ def main():
     parser.add_argument("-b", "--build-system", choices=["cmake", "autotools", "qmake", "make"], help="Force use of the specified build system rather than trying to autodetect.")
     parser.add_argument("-c", "--compiler", help="Use the specified executable for clang. It should be the same version as the libclang used by YCM. The executable for clang++ will be inferred from this.")
     parser.add_argument("-C", "--configure_opts", default="", help="Additional flags to pass to configure/cmake/etc. e.g. --configure_opts=\"--enable-FEATURE\"")
-    parser.add_argument("-F", "--format", choices=["ycm", "cc"], default="ycm", help="Format of output file (YouCompleteMe or color_coded). Default: ycm")
+    parser.add_argument("-F", "--format", choices=["ycm", "cc", "json", "deoplete"], default="ycm", help="Format of output file (YouCompleteMe, color_coded or JSON compilation database or Deoplete clang flags). Default: ycm")
     parser.add_argument("-M", "--make-flags", help="Flags to pass to make when fake-building. Default: -M=\"{}\"".format(" ".join(default_make_flags)))
-    parser.add_argument("-o", "--output", help="Save the config file as OUTPUT. Default: .ycm_extra_conf.py, or .color_coded if --format=cc.")
+    parser.add_argument("-o", "--output", help="Save the config file as OUTPUT. Default: .ycm_extra_conf.py, or .color_coded if --format=cc or compilation_database.json if --format=json.")
     parser.add_argument("-x", "--language", choices=["c", "c++"], help="Only output flags for the given language. This defaults to whichever language has its compiler invoked the most.")
     parser.add_argument("--out-of-tree", action="store_true", help="Build autotools projects out-of-tree. This is a no-op for other project types.")
     parser.add_argument("--qt-version", choices=["4", "5"], default="5", help="Use the given Qt version for qmake. (Default: 5)")
@@ -76,6 +76,8 @@ def main():
         None:  args["output"],
         "cc":  os.path.join(project_dir, ".color_coded"),
         "ycm": os.path.join(project_dir, ".ycm_extra_conf.py"),
+        "json": os.path.join(project_dir, "compilation_database.json"),
+        "deoplete": os.path.join(project_dir, ".clang"),
     }[args["format"] if args["output"] is None else None]
 
     if(os.path.exists(config_file) and not args["force"]):
@@ -99,6 +101,8 @@ def main():
     generate_conf = {
         "ycm": generate_ycm_conf,
         "cc":  generate_cc_conf,
+        "json":  generate_json_conf,
+        "deoplete":  generate_deoplete_conf,
     }[output_format]
 
     # temporary files to hold build logs
@@ -458,6 +462,29 @@ def generate_ycm_conf(flags, config_file):
 
                 else:
                     # copy template
+                    output.write(line)
+
+
+def generate_deoplete_conf(flags, config_file):
+    '''Generates the .clang file containing flags = ... .
+
+    flags: the list of flags
+    config_file: the path to save the configuration file at'''
+
+    template_file = os.path.join(ycm_generator_dir, "clang_template.py")
+
+    with open(template_file, "r") as template:
+        with open(config_file, "w") as output:
+
+            for line in template:
+                if(line == "# INSERT FLAGS HERE\n"):
+                    # insert generated code
+                    for flag in flags:
+                        if(isinstance(flag, basestring)):
+                            output.write(" \\  \"    '{}'\",\n".format(flag))
+                        else: # is tuple
+                            output.write(" \\  \" '{}', '{}'\",\n".format(*flag))
+                else:
                     output.write(line)
 
 
